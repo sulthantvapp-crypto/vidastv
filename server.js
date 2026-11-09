@@ -24,9 +24,11 @@ async function resolveVidFast(inputUrl) {
   const pageOrigin = new URL(pageUrl).origin;
   const STREAM_PROBE_TIMEOUT_MS = 10000;
   const minimumStreamHeight = Number(process.env.VIDFAST_MIN_HEIGHT || 0);
+  
+  // യഥാർത്ഥ ബ്രൗസർ യൂസർ ഏജന്റും ഹെഡേഴ്സും 403 ഒഴിവാക്കാൻ
   const userAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
   let nativeFetch = globalThis.fetch.bind(globalThis);
   const nativeCrypto = globalThis.crypto ?? webcrypto;
@@ -53,8 +55,14 @@ async function resolveVidFast(inputUrl) {
   function mergedHeaders(initHeaders = {}, referer = pageUrl) {
     const headers = new Headers(initHeaders);
     if (!headers.has("user-agent")) headers.set("user-agent", userAgent);
-    headers.set("referer", referer);
-    headers.set("origin", pageOrigin);
+    headers.set("referer", "https://vidfast.pro/");
+    headers.set("origin", "https://vidfast.pro");
+    headers.set("sec-ch-ua", '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"');
+    headers.set("sec-ch-ua-mobile", "?0");
+    headers.set("sec-ch-ua-platform", '"Windows"');
+    headers.set("sec-fetch-dest", "document");
+    headers.set("sec-fetch-mode", "navigate");
+    headers.set("sec-fetch-site", "cross-site");
     const cookie = cookieHeader();
     if (cookie) headers.set("cookie", cookie);
     return headers;
@@ -63,7 +71,7 @@ async function resolveVidFast(inputUrl) {
   async function fetchPage() {
     const response = await nativeFetch(pageUrl, {
       headers: mergedHeaders({
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "accept-language": "en-US,en;q=0.9",
         "upgrade-insecure-requests": "1",
       }),
@@ -93,7 +101,6 @@ async function resolveVidFast(inputUrl) {
   const html = await fetchPage();
   const props = parseProps(html);
   
-  // സിംപ്ലിഫൈഡ് റെസ്പോൺസ് അല്ലെങ്കിൽ ലിങ്ക് റിസോൾവർ ഇവിടെ വർക്ക് ചെയ്യും
   return {
     url: pageUrl,
     props,
@@ -117,7 +124,6 @@ export default {
     // മൂവി അല്ലെങ്കിൽ ടിവി റൂട്ടുകൾ ഹാൻഡിൽ ചെയ്യാൻ
     if (path.startsWith("/movie/") || path.startsWith("/tv/")) {
       try {
-        // ഉദാഹരണത്തിന് Vidfast ഒറിജിനൽ ലിങ്ക് ജനറേറ്റ് ചെയ്യുന്ന ലോജിക് ഇവിടെ വിളിക്കാം
         const targetId = path.split("/")[2];
         const fakeVidFastUrl = `https://vidfast.pro/movie/${targetId}`;
         
