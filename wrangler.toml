@@ -1,6 +1,6 @@
-name = "vidfast-m3u8-extractor"
+name = "vidastv"
 main = "server.js"
 compatibility_date = "2026-03-01"
 
-[vars]
-# ആവശ്യമുണ്ടെങ്കിൽ എൻവയോൺമെന്റ് വേരിയബിളുകൾ ഇവിടെ നൽകാം
+[compatibility_flags]
+nodejs_compat = true
