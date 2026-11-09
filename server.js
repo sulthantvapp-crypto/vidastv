@@ -1,4 +1,4 @@
-// Headless VidFast resolver for Cloudflare Workers / Node.js
+// Headless VidFast resolver for Cloudflare Workers
 import { webcrypto } from "node:crypto";
 
 const debug = process.env.VIDFAST_DEBUG === "1";
@@ -22,16 +22,12 @@ function describeError(error) {
 async function resolveVidFast(inputUrl) {
   const pageUrl = new URL(inputUrl).href;
   const pageOrigin = new URL(pageUrl).origin;
-  const STREAM_PROBE_TIMEOUT_MS = 10000;
-  const minimumStreamHeight = Number(process.env.VIDFAST_MIN_HEIGHT || 0);
   
-  // യഥാർത്ഥ ബ്രൗസർ യൂസർ ഏജന്റും ഹെഡേഴ്സും 403 ഒഴിവാക്കാൻ
   const userAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
   let nativeFetch = globalThis.fetch.bind(globalThis);
-  const nativeCrypto = globalThis.crypto ?? webcrypto;
   const cookies = new Map();
 
   function storeCookies(response) {
@@ -48,15 +44,11 @@ async function resolveVidFast(inputUrl) {
     return [...cookies.entries()].map(([key, value]) => `${key}=${value}`).join("; ");
   }
 
-  function absoluteUrl(value, base = pageUrl) {
-    return new URL(String(value), base).href;
-  }
-
   function mergedHeaders(initHeaders = {}, referer = pageUrl) {
     const headers = new Headers(initHeaders);
     if (!headers.has("user-agent")) headers.set("user-agent", userAgent);
-    headers.set("referer", "https://vidfast.pro/");
-    headers.set("origin", "https://vidfast.pro");
+    headers.set("referer", "https://vidfast.vc/");
+    headers.set("origin", "https://vidfast.vc");
     headers.set("sec-ch-ua", '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"');
     headers.set("sec-ch-ua-mobile", "?0");
     headers.set("sec-ch-ua-platform", '"Windows"');
@@ -116,18 +108,30 @@ export default {
 
     // റൂട്ട് ടെസ്റ്റ് പേജ്
     if (path === "/") {
-      return new Response(JSON.stringify({ status: "VidFast Worker is Running!", endpoints: ["/movie/:id", "/tv/:id/:season/:episode"] }), {
+      return new Response(JSON.stringify({ 
+        status: "VidFast Worker is Running!", 
+        supported_routes: ["/movie/<id>", "/tv/<id>/<season>/<episode>"] 
+      }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // മൂവി അല്ലെങ്കിൽ ടിവി റൂട്ടുകൾ ഹാൻഡിൽ ചെയ്യാൻ
-    if (path.startsWith("/movie/") || path.startsWith("/tv/")) {
+    // /movie/<id> അല്ലെങ്കിൽ /tv/<id>/<season>/<episode> പാറ്റേൺ മാച്ച് ചെയ്യാൻ
+    const movieMatch = path.match(/^\/movie\/(\d+)\/?$/i);
+    const tvMatch = path.match(/^\/tv\/(\d+)\/(\d+)\/(\d+)\/?$/i);
+
+    if (movieMatch || tvMatch) {
       try {
-        const targetId = path.split("/")[2];
-        const fakeVidFastUrl = `https://vidfast.pro/movie/${targetId}`;
+        let targetUrl = "";
+        if (movieMatch) {
+          const movieId = movieMatch[1];
+          targetUrl = `https://vidfast.vc/movie/${movieId}`;
+        } else if (tvMatch) {
+          const [_, tvId, season, episode] = tvMatch;
+          targetUrl = `https://vidfast.vc/tv/${tvId}/${season}/${episode}`;
+        }
         
-        const result = await resolveVidFast(fakeVidFastUrl);
+        const result = await resolveVidFast(targetUrl);
         return new Response(JSON.stringify(result), {
           headers: { "Content-Type": "application/json" }
         });
@@ -139,6 +143,9 @@ export default {
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response(JSON.stringify({ error: "VidFast: unsupported URL format" }), { 
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 };
