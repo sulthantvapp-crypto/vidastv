@@ -1,4 +1,4 @@
-// Headless VidFast resolver for Cloudflare Workers
+// Headless VidFast resolver for Cloudflare/Vercel Workers
 import { webcrypto } from "node:crypto";
 
 const debug = process.env.VIDFAST_DEBUG === "1";
@@ -21,8 +21,6 @@ function describeError(error) {
 
 async function resolveVidFast(inputUrl) {
   const pageUrl = new URL(inputUrl).href;
-  const pageOrigin = new URL(pageUrl).origin;
-  
   const userAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -93,20 +91,47 @@ async function resolveVidFast(inputUrl) {
   const html = await fetchPage();
   const props = parseProps(html);
   
+  // HLS stream URL നിർമ്മിക്കാൻ/എക്സ്ട്രാക്ട് ചെയ്യാനുള്ള ഭാഗം
+  let streamUrl = "";
+  if (props && props.en) {
+    // VidFast പ്ലെയർ ടോക്കൺ ഉപയോഗിച്ച് HLS സോഴ്സ് ജനറേറ്റ് ചെയ്യുന്ന എൻഡ്പോയിന്റ് റിക്വസ്റ്റ്
+    try {
+      const sourceApi = `https://vidfast.vc/api/source/${props.en}`;
+      const res = await nativeFetch(sourceApi, {
+        headers: mergedHeaders({
+          "accept": "application/json, text/javascript, */*; q=0.01",
+          "x-requested-with": "XMLHttpRequest"
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        streamUrl = data.url || data.file || "";
+      }
+    } catch (err) {
+      log("Source API fetch error:", err.message);
+    }
+  }
+
+  // ഒരുവട്ടം കൂടി പേജിൽ നിന്ന് .m3u8 ലിങ്ക് നേരിട്ട് തപ്പുക
+  if (!streamUrl) {
+    const m3u8Match = html.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+    if (m3u8Match) {
+      streamUrl = m3u8Match[1];
+    }
+  }
+
   return {
-    url: pageUrl,
+    url: streamUrl || pageUrl,
     props,
     server: "VidFast Worker",
   };
 }
 
-// Cloudflare Worker Default Export Handler
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // റൂട്ട് ടെസ്റ്റ് പേജ്
     if (path === "/") {
       return new Response(JSON.stringify({ 
         status: "VidFast Worker is Running!", 
@@ -116,7 +141,6 @@ export default {
       });
     }
 
-    // /movie/<id> അല്ലെങ്കിൽ /tv/<id>/<season>/<episode> പാറ്റേൺ മാച്ച് ചെയ്യാൻ
     const movieMatch = path.match(/^\/movie\/(\d+)\/?$/i);
     const tvMatch = path.match(/^\/tv\/(\d+)\/(\d+)\/(\d+)\/?$/i);
 
